@@ -27,11 +27,12 @@ def get_files(dir_path):
   os.chdir("C:/Users/AdrianO/Desktop/Perfect Practice/Python" + dir_path)
   loc = os.getcwd()
   files = os.listdir(loc)
-  queryReport = {}
+  queryReport = {} #key=file name, value=[header for xlsx, query to run]
 
   for file_ in files:
     print "looping the files in directory provided"
     if file_.endswith(".sql"): 
+      lst = []
       #print file_
       with open(file_, 'r') as myfile:
         data = ''
@@ -41,57 +42,62 @@ def get_files(dir_path):
           #print line
           if count == 0:
             header = str(line)
+            lst.append(header)
             count += 1
           else:
             data = data + line.replace('\n',' ')
           
-        queryReport[file_] = data
-  #print "printing header: ", header
-  report = [header,queryReport]
-  return report
+        lst.append(data)
+        queryReport[file_] = lst 
+    header = ''
+  
+  return queryReport
 #end get_files functions
 
-def get_data(header, file_name, query):
-  os.chdir("C:/Users/AdrianO/Desktop/Perfect Practice/Python")
+def write_xlsx(header, file_name, query):
   current_time = time.strftime('%m-%d-%y_%H%M')
-  dest_filename = file_name.replace('.sql', current_time + '.xlsx')
+  dest_filename = file_name.replace('.sql', '_' + current_time + '.xlsx')
   wb = Workbook()
   ws = wb.active
   
   conn_str = (
-  "DRIVER={PostgreSQL Unicode};"
-  "DATABASE={datebase};"
-  "UID={username};"
-  "PWD={password};"
-  "SERVER={server_address};"
-  "PORT={port_number};")
+  "DRIVER={ServerType};"
+  "DATABASE={ServerName};"
+  "UID={DBUserName};"
+  "PWD={DBPass};"
+  "SERVER={ServerAddress};"
+  "PORT={ServerPort};")
   conn = pyodbc.connect(conn_str)
   results = conn.execute(query)
 
   rows = results.fetchall()
+  
+  if len(rows) > 0:
+    #add column header to top of excel list
+    ws.append(header.split(","))
+    #generic list, used to write contents pulled from database to the excel file
+    lst = []
+    
+    #loop through contents pulled from database and write to excel list
+    for row in rows:
+      convert_str = []
+      lst = list(row)
+      for item in lst:
+        new_item = str(item)
+        new_item = new_item.replace('\x1f','')
+        convert_str.append(new_item)
+      ws.append(convert_str)
 
-  #add column header to top of excel list
-  ws.append(header.split(","))
-  #generic list, used to write contents pulled from database to the excel file
-  lst = []
+    print 'writing contents to file: ', dest_filename
+    #write the file
+    wb.save(dest_filename)
+    wb.close()
+    return dest_filename
 
-  #loop through contents pulled from database and write to excel list
-  for row in rows:
-    #print 'printing from the database\n',row
-    lst = list(row)
-    #print 'printing a copy of the row as a list\n', lst
-    ws.append(lst)
-
-  print 'writing contents to file'
-  #write the file
-  wb.save(dest_filename)
-  wb.close()
-
-#end get_data function
+#end write_xlsx function
 
 #connects to google smtp server via port 587, grabs a specific excel file and email to Office
-def send_mail(send_from,send_to,subject,text,file_name,isTls=True):
-  
+def send_mail(send_from,send_to,subject,text,filename,isTls=True):
   #create message to send
   msg = MIMEMultipart()
   msg['From'] = send_from
@@ -109,7 +115,7 @@ def send_mail(send_from,send_to,subject,text,file_name,isTls=True):
   smtp = smtplib.SMTP("smtp.gmail.com",587)
   if isTls:
       smtp.starttls()
-  smtp.login("{login}","{password}")
+  smtp.login("{SenderUserName}","{SenderUserPass}")
   smtp.sendmail(send_from, send_to, msg.as_string())
   smtp.quit()
 
@@ -117,13 +123,24 @@ def send_mail(send_from,send_to,subject,text,file_name,isTls=True):
 
 def main():
   os.chdir("C:/Users/AdrianO/Desktop/Perfect Practice/Python")
-  reports = "/reports/"
+  reports = "/report_queries/"
   getQuery = get_files(reports)
-  for k, v in getQuery[1].iteritems():
-    get_data(getQuery[0], k, v)
-    current_time = time.strftime('%m-%d-%y_%H%M')
-    dest_filename = k.replace('.sql', current_time + '.xlsx')
-    send_mail("{sender@example.com}", "{receiver@example.com}", "Auto Generated Report " + dest_filename, "Auto Generated Report " + dest_filename, dest_filename)
+  os.chdir("C:/Users/AdrianO/Desktop/Perfect Practice/Python/reports")
+  loc = os.getcwd()
+  xlsx_files = []
+  #key=file name, value=[header for xlsx, query to run]
+  for k, v in getQuery.iteritems():
+    xlsx_files.append( write_xlsx(v[0], k, v[1]) )
+  
+  for files_ in xlsx_files:
+    print type(files_), files_
+    if files_ == None:
+      pass
+    elif '{SpecialClientReport}' in files_:
+      print '{SpecialClientReport} Found'
+      #{SpecialClientReport}, send email to {differentEmailReceiver} for review
+    else: 
+      send_mail("{senderEmail}", "{receiverEmail}", "Auto Generated Report " + files_, "Auto Generated Report " + files_, files_)
   
 #end main
 
