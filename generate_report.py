@@ -1,16 +1,20 @@
 # Adrian Osuna
 # Searches a file director for .sql files and Connects to a database
 # Via ODBC, executes the .sql against the database and write content back
-# To a EXCEL (.xlxs) file and send email to Office Manager to facilitate and review
+# To an EXCEL (.xlxs) file and send email to Office Manager to facilitate and review
 
 import pyodbc #Used to Connect To DataBase
 import os
 import time
+from datetime import date
+import calendar
+import string
 
 #Imports Used to Read And Write To XLSX Files.
 from openpyxl import Workbook
 from openpyxl.compat import range
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.table import Table, TableStyleInfo
 ########################################################
 
 #Imports Used to Connect To Gmail Account And Send Email
@@ -21,6 +25,8 @@ from email.mime.text import MIMEText
 from email.utils import formatdate
 from email import encoders
 ########################################################
+
+numberToAlpha = dict(zip(range(1, 27), string.ascii_uppercase))
 
 def get_files(dir_path):
   header = ''
@@ -85,10 +91,26 @@ def write_xlsx(header, file_name, query):
       for item in lst:
         new_item = str(item)
         new_item = new_item.replace('\x1f','')
+        new_item = new_item.replace('None','')
         convert_str.append(new_item)
       ws.append(convert_str)
+    
+    #print 'writing contents to file, with formating: ', dest_filename
 
-    print 'writing contents to file: ', dest_filename
+    #Expand all Columns to match Larges Text in column
+    for column_cells in ws.columns:
+      length = max(len(str(cell.value)) for cell in column_cells)
+      ws.column_dimensions[column_cells[0].column].width = length
+
+    #Add table formatting to the Excel List, Only work to letter Z
+    #breaks if query is larger than 26 columns
+    endColumn = numberToAlpha[len(list(ws.rows)[0])] + str(len(list(ws.rows)))
+    tab = Table(displayName="Table", ref="A1:"+endColumn)
+    style = TableStyleInfo(name="TableStyleLight11", showFirstColumn=False, showLastColumn=False,
+                           showRowStripes=True, showColumnStripes=True)
+    tab.tableStyleInfo = style
+    ws.add_table(tab)
+
     #write the file
     wb.save(dest_filename)
     wb.close()
@@ -133,12 +155,12 @@ def main():
     xlsx_files.append( write_xlsx(v[0], k, v[1]) )
   
   for files_ in xlsx_files:
-    print type(files_), files_
+    # print type(files_), files_
     if files_ == None:
       pass
     elif '{SpecialClientReport}' in files_:
-      print '{SpecialClientReport} Found'
-      #{SpecialClientReport}, send email to {differentEmailReceiver} for review
+      print '{SpecialClientReport} found'
+      #{SpecialClientReport} report, send email to fernando for review
     else: 
       send_mail("{senderEmail}", "{receiverEmail}", "Auto Generated Report " + files_, "Auto Generated Report " + files_, files_)
   
